@@ -1,12 +1,15 @@
 import time
 from tkinter import Tk, Canvas
+import random
+
+BG_COLOR = "#d9d9d9"
 
 class Window:
 
     def __init__(self, width, height):
         self.__root = Tk()
         self.__root.title = "Maze Solver"
-        self.canvas = Canvas(width = width, height = height, bg = "#d9d9d9")
+        self.canvas = Canvas(width = width, height = height, bg = BG_COLOR)
         self.canvas.pack()
         self.is_running = False
         self.__root.protocol("WM_DELETE_WINDOW", self.close)
@@ -51,42 +54,56 @@ class Cell:
     RIGHT = 1
     TOP = 2
     BOTTOM = 3
+    DIRECTIONS = (LEFT, RIGHT, TOP, BOTTOM,)
 
-    SIZE = 36
+    SIZE = 40
+
+    SHOW_NOT_VISITED = False
 
     def __init__(self, p, win = None):
         self.p = p
         self.__win = win
         self.has_wall = [True, True, True, True]
+        self.visited = False
+
+    def _draw_line(self, p1, p2, visible):
+        if visible:
+            self.__win.draw_line(Line(p1, p2))
+        else:
+            self.__win.draw_line(Line(p1, p2), BG_COLOR)
 
     def draw(self):
-        if self.has_wall[self.LEFT]:
-            self.__win.draw_line(Line(
-                self.p, Point(self.p.x, self.p.y + self.SIZE)
-            ))
-        if self.has_wall[self.TOP]:
-            self.__win.draw_line(Line(
-                self.p, Point(self.p.x + self.SIZE, self.p.y)
-            ))
-        else:
-            self.__win.draw_line(Line(
-                self.p, Point(self.p.x + self.SIZE, self.p.y)
-            ), "#d9d9d9")
-        if self.has_wall[self.RIGHT]:
-            self.__win.draw_line(Line(
-                Point(self.p.x + self.SIZE, self.p.y),
-                Point(self.p.x + self.SIZE, self.p.y + self.SIZE)
-            ))
-        if self.has_wall[self.BOTTOM]:
-            self.__win.draw_line(Line(
-                Point(self.p.x, self.p.y + self.SIZE),
-                Point(self.p.x + self.SIZE, self.p.y + self.SIZE)
-            ))
-        else:
-            self.__win.draw_line(Line(
-                Point(self.p.x, self.p.y + self.SIZE),
-                Point(self.p.x + self.SIZE, self.p.y + self.SIZE)
-            ), "#d9d9d9")
+        self._draw_line(
+            self.p,
+            Point(self.p.x, self.p.y + self.SIZE),
+            self.has_wall[self.LEFT]
+        )
+        self._draw_line(
+            self.p,
+            Point(self.p.x + self.SIZE, self.p.y),
+            self.has_wall[self.TOP]
+        )
+        self._draw_line(
+            Point(self.p.x + self.SIZE, self.p.y),
+            Point(self.p.x + self.SIZE, self.p.y + self.SIZE),
+            self.has_wall[self.RIGHT]
+        )
+        self._draw_line(
+            Point(self.p.x, self.p.y + self.SIZE),
+            Point(self.p.x + self.SIZE, self.p.y + self.SIZE),
+            self.has_wall[self.BOTTOM]
+        )
+        if Cell.SHOW_NOT_VISITED:
+            self._draw_line(
+                Point(self.p.x + self.SIZE//4, self.p.y + self.SIZE//4),
+                Point(self.p.x + 3*self.SIZE//4, self.p.y + 3*self.SIZE//4),
+                not self.visited
+            )
+            self._draw_line(
+                Point(self.p.x + 3*self.SIZE//4, self.p.y + self.SIZE//4),
+                Point(self.p.x + self.SIZE//4, self.p.y + 3*self.SIZE//4),
+                not self.visited
+            )
 
     def draw_move(self, to_cell, undo = False):
         center = Point(self.p.x + self.SIZE//2, self.p.y + self.SIZE//2)
@@ -104,7 +121,10 @@ class Maze:
         cell_size_x,
         cell_size_y,
         win = None,
+        seed = None
     ):
+        if seed is not None:
+            random.seed(seed)
         self.x1 = x1
         self.y1 = y1
         self.num_rows = num_rows
@@ -130,17 +150,56 @@ class Maze:
         if self.__win is None:
             return
         self._cells[c][r].draw()
-        self._animate()
+
+    def _wall_down(self, c, r, d):
+        self._cells[c][r].has_wall[d] = False
+        self._draw_cell(c, r)
 
     def _animate(self):
         self.__win.redraw()
         time.sleep(0.05)
 
     def _break_entrance_and_exit(self):
-        self._cells[0][0].has_wall[Cell.TOP] = False
-        self._draw_cell(0, 0)
-        self._cells[-1][-1].has_wall[Cell.BOTTOM] = False
-        self._draw_cell(-1,-1)
+        self._wall_down(0, 0, Cell.TOP)
+        self._wall_down(-1, -1, Cell.BOTTOM)
+
+    def _next_cell(self, c, r, direction):
+        if direction == Cell.LEFT:
+            c -= 1
+            d = Cell.RIGHT
+        elif direction == Cell.RIGHT:
+            c += 1
+            d = Cell.LEFT
+        elif direction == Cell.TOP:
+            r -= 1
+            d = Cell.BOTTOM
+        elif direction == Cell.BOTTOM:
+            r += 1
+            d = Cell.TOP
+        else:
+            raise Exception(f"unknown direction {direction} ({c}, {r})")
+        if 0 <= c < len(self._cells) and 0 <= r < len(self._cells[c]):
+            return not self._cells[c][r].visited, c, r, d
+        return False, 0, 0, 0
+
+    def _break_walls_r(self, i = 0, j = 0):
+        if self._cells[i][j].visited:
+            raise Exception(f"({i}, {j}) already visited")
+        self._cells[i][j].visited = True
+        while True:
+            cells_to_visit = []
+            for d in Cell.DIRECTIONS:
+                to_visit, ii, jj, dd = self._next_cell(i, j, d)
+                if to_visit:
+                    cells_to_visit.append((d, ii, jj, dd))
+            if len(cells_to_visit) == 0:
+                self._draw_cell(i, j)
+                return
+            d, ii, jj, dd = random.choice(cells_to_visit)
+            self._wall_down(i, j, d)
+            self._wall_down(ii, jj, dd)
+            self._break_walls_r(ii, jj)
+
 
 def main1():
     win = Window(800, 600)
@@ -175,8 +234,8 @@ def main():
     win = Window(800, 600)
 
     maze = Maze(20, 25, 6, 10, Cell.SIZE, Cell.SIZE, win)
-    maze._animate()
     maze._break_entrance_and_exit()
+    maze._break_walls_r()
 
     win.wait_for_close()
 
