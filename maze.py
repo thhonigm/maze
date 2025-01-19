@@ -6,7 +6,7 @@ CELL_COLOR = "black"
 BG_COLOR = "#d9d9d9"
 MOVE_COLOR = "red"
 SHOW_NOT_VISITED = False
-DRAW_INVISIBLE = True
+DRAW_INVISIBLE = False
 
 
 class Window:
@@ -66,9 +66,9 @@ class Cell:
     RIGHT = 1
     TOP = 2
     BOTTOM = 3
-    DIRECTIONS = (LEFT, RIGHT, TOP, BOTTOM,)
+    DIRECTIONS = (RIGHT, BOTTOM, LEFT, TOP,)
 
-    SIZE = 40
+    SIZE = 41
 
     def __init__(self, p):
         self.p = p
@@ -169,11 +169,13 @@ class Maze:
                     Point(self.x1 + c * self.cell_size_x,
                           self.y1 + r * self.cell_size_y))
                 self._cells[-1].append(cell)
-                cell.draw(self.__win, self.ANIMATE_INIT)
+                if self.ANIMATE_INIT:
+                    cell.draw(self.__win, True)
 
     def _wall_down(self, c, r, d):
         self._cells[c][r].has_wall[d] = False
-        self._cells[c][r].draw(self.__win, self.ANIMATE_INIT)
+        if self.ANIMATE_INIT:
+            self._cells[c][r].draw(self.__win, True)
 
     def _break_entrance_and_exit(self):
         self._wall_down(0, 0, Cell.TOP)
@@ -207,7 +209,8 @@ class Maze:
                 if to_visit:
                     cells_to_visit.append((d, ii, jj, dd))
             if len(cells_to_visit) == 0:
-                self._cells[i][j].draw(self.__win, self.ANIMATE_INIT)
+                if self.ANIMATE_INIT:
+                    self._cells[i][j].draw(self.__win, True)
                 return
             d, ii, jj, dd = random.choice(cells_to_visit)
             self._wall_down(i, j, d)
@@ -222,8 +225,39 @@ class Maze:
         for c in self._cells:
             for cr in c:
                 cr.visited = False
-                if self.ANIMATE_INIT:
-                    cr.draw(self.__win)
+                cr.draw(self.__win, animate = self.ANIMATE_INIT)
+
+    def solve(self):
+        return self._solve_r(0, 0)
+
+    def _solve_r(self, i, j):
+        cell = self._cells[i][j]
+        cell.visited = True
+        cell.draw(self.__win, animate = True)
+        if  i == len(self._cells) - 1 and j == len(self._cells[i]) - 1:
+            return True
+        for d in Cell.DIRECTIONS:
+            if cell.has_wall[d]:
+                continue
+            ii, jj = i, j
+            if d == Cell.LEFT:
+                ii -= 1
+            elif d == Cell.RIGHT:
+                ii += 1
+            elif d == Cell.TOP:
+                jj -= 1
+            elif d == Cell.BOTTOM:
+                jj += 1
+            if not (0 <= ii < len(self._cells) and 0 <= jj < len(self._cells[ii])):
+                continue
+            next_cell = self._cells[ii][jj]
+            if next_cell.visited:
+                continue;
+            cell.draw_move(next_cell, self.__win, animate = True)
+            if self._solve_r(ii ,jj):
+                return True
+            cell.draw_move(next_cell, self.__win, animate = True, undo = True)
+        return False
 
 
 def main1():
@@ -263,7 +297,8 @@ def main1():
 
 def main():
     win = Window(800, 600)
-    maze = Maze(20, 25, 10, 13, Cell.SIZE, Cell.SIZE, win)
+    maze = Maze(20, 25, 13, 18, Cell.SIZE, Cell.SIZE, win)
+    maze.solve()
     win.wait_for_close()
 
 if __name__ == "__main__":
